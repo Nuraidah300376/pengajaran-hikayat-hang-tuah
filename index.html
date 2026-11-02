@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Escape Room KMK - Bilik Rahsia Sastera</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- html2pdf CDN for Direct PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0f172a;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .font-cinzel { font-family: 'Cinzel', serif; }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        /* Custom Scrollbar for Modal */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #d97706;
+            border-radius: 4px;
+        }
+        /* Touch Controller Styles */
+        .touch-btn {
+            background: rgba(30, 41, 59, 0.7);
+            border: 2px solid rgba(217, 119, 6, 0.5);
+            backdrop-filter: blur(4px);
+            touch-action: manipulation;
+        }
+        .touch-btn:active {
+            background: rgba(217, 119, 6, 0.8);
+        }
+
+        /* Printable Certificate Styling */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #printable-certificate, #printable-certificate * {
+                visibility: visible;
+            }
+            #printable-certificate {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background: white !important;
+                color: black !important;
+                border: 10px double #b45309 !important;
+                padding: 40px !important;
+                box-sizing: border-box;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-100">
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- HUD / Game UI -->
+    <div id="game-hud" class="hidden absolute inset-0 pointer-events-none flex flex-col justify-between p-4 md:p-6 z-20">
+        <!-- Top Bar -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Game Title / Mission & Level Badge -->
+            <div class="bg-slate-900/90 backdrop-blur-md p-3 md:p-4 rounded-xl border border-amber-500/40 shadow-lg max-w-xs md:max-w-sm pointer-events-auto">
+                <div class="flex items-center gap-2 mb-1">
+                    <span id="hud-level-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-slate-950 font-mono">LEVEL 1</span>
+                    <span id="hud-student-name" class="text-xs text-amber-300 font-semibold truncate">Pelajar</span>
+                </div>
+                <h1 id="hud-level-title" class="text-amber-400 font-cinzel font-bold text-sm md:text-base">LEVEL 1: ARAS MUDAH</h1>
+                <p class="text-[11px] text-slate-300 mt-0.5">Siasat objek bertanda & kumpul kunci untuk mara ke level seterusnya!</p>
+            </div>
+
+            <!-- Score & Progress Panel -->
+            <div class="bg-slate-900/90 backdrop-blur-md p-3 md:p-4 rounded-xl border border-amber-500/40 shadow-lg text-right pointer-events-auto flex flex-col items-end gap-1.5">
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Markah Terkumpul</span>
+                    <span id="score-text" class="text-xl md:text-2xl font-bold text-amber-400 font-cinzel">0 Markah</span>
+                </div>
+                <!-- Key Icons Progress -->
+                <div class="flex items-center gap-1.5 my-0.5" id="keys-container">
+                    <!-- Dynamic Keys -->
+                </div>
+                <div id="level-breakdown-hud" class="text-[10px] text-slate-400 flex gap-2 border-t border-slate-700/60 pt-1">
+                    <span>L1: <b id="score-l1" class="text-amber-400">0</b></span>
+                    <span>L2: <b id="score-l2" class="text-amber-400">0</b></span>
+                    <span>L3: <b id="score-l3" class="text-amber-400">0</b></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prompt Interaction (Center Bottom) -->
+        <div class="flex justify-center w-full mb-20 md:mb-8">
+            <div id="interact-prompt" class="hidden bg-amber-500/90 text-slate-950 font-bold px-6 py-3 rounded-full shadow-2xl backdrop-blur-md animate-bounce border-2 border-amber-300 pointer-events-auto cursor-pointer flex items-center gap-2" onclick="triggerObjectInteraction()">
+                <span class="bg-slate-950 text-amber-400 px-2 py-0.5 rounded text-sm font-mono">E</span>
+                <span id="prompt-label" class="tracking-wide">TEKAN E ATAU KETUK UNTUK MENYIASAT</span>
+            </div>
+        </div>
+
+        <!-- Mobile Touch Controls -->
+        <div id="mobile-controls" class="md:hidden pointer-events-auto flex justify-between items-end w-full px-2 pb-2">
+            <div class="grid grid-cols-3 gap-1 w-36 h-36">
+                <div></div>
+                <button id="btn-up" class="touch-btn rounded-t-lg flex items-center justify-center text-xl font-bold text-amber-400">▲</button>
+                <div></div>
+                <button id="btn-left" class="touch-btn rounded-l-lg flex items-center justify-center text-xl font-bold text-amber-400">◀</button>
+                <div class="bg-slate-900/40 rounded-sm"></div>
+                <button id="btn-right" class="touch-btn rounded-r-lg flex items-center justify-center text-xl font-bold text-amber-400">▶</button>
+                <div></div>
+                <button id="btn-down" class="touch-btn rounded-b-lg flex items-center justify-center text-xl font-bold text-amber-400">▼</button>
+                <div></div>
+            </div>
+            <button id="btn-action" class="touch-btn w-20 h-20 rounded-full flex flex-col items-center justify-center text-amber-400 font-bold border-2 border-amber-500 shadow-lg active:scale-95 transition-transform">
+                <span class="text-2xl">🔍</span>
+                <span class="text-[10px] mt-0.5 uppercase">SIASAT</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Start Screen Overlay (Student Info & Rules) -->
+    <div id="start-screen" class="absolute inset-0 bg-slate-950/95 backdrop-blur-lg flex items-center justify-center p-4 z-50">
+        <div class="max-w-xl w-full bg-slate-900 border-2 border-amber-500/50 rounded-2xl p-6 md:p-8 shadow-2xl text-center max-h-[95vh] overflow-y-auto custom-scrollbar">
+            <div class="inline-block p-3 bg-amber-500/10 rounded-full mb-3 border border-amber-500/30">
+                <span class="text-4xl">📜</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-cinzel font-bold text-amber-400 tracking-wider mb-1">ESCAPE ROOM KMK 3D</h1>
+            <h2 class="text-sm md:text-base text-slate-300 font-semibold mb-4">Pengajaran Hikayat Hang Tuah (Bab II)</h2>
+
+            <!-- Student Profile Form -->
+            <div class="bg-slate-800/80 p-4 rounded-xl text-left text-sm text-slate-300 mb-5 border border-slate-700 space-y-3">
+                <h3 class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>👤</span> PROFIL PELAJAR
+                </h3>
+                <div class="grid grid-cols-1 gap-2.5">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Nama Pelajar *</label>
+                        <input type="text" id="input-student-name" placeholder="Cth: Ahmad Bin Zulkifli" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Kelas *</label>
+                            <input type="text" id="input-student-class" placeholder="Cth: 6 Gemilang" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Sekolah *</label>
+                            <input type="text" id="input-student-school" placeholder="Cth: SMK Seri Indah" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-amber-400">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Level Structure Overview -->
+            <div class="bg-slate-800/60 p-4 rounded-xl text-left text-xs text-slate-300 space-y-2 mb-5 border border-slate-700">
+                <p class="font-bold text-amber-300 flex items-center gap-1.5">
+                    <span>🎮</span> STRUKTUR 3 LEVEL PERMAINAN:
+                </p>
+                <div class="space-y-1 pl-1">
+                    <p><b class="text-amber-400">Level 1 (Mudah):</b> 3 Objek (3 Soalan Asas) - 60 Markah Maksimum.</p>
+                    <p><b class="text-amber-400">Level 2 (Sederhana):</b> 4 Objek (4 Soalan Analisis) - 80 Markah Maksimum.</p>
+                    <p><b class="text-amber-400">Level 3 (KBAT):</b> 5 Objek (5 Soalan Penilaian) - 100 Markah Maksimum.</p>
+                </div>
+                <p class="text-[11px] text-slate-400 italic pt-1">*Sijil Pencapaian digital akan diberikan setelah tamat Level 3!</p>
+            </div>
+
+            <button onclick="startGame()" class="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold text-base rounded-xl shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 transition-all">
+                MULA PERMAINAN (LEVEL 1) ➔
+            </button>
+        </div>
+    </div>
+
+    <!-- Quiz Question Modal Overlay -->
+    <div id="quiz-modal" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-40">
+        <div class="max-w-2xl w-full bg-slate-900 border-2 border-amber-500/60 rounded-2xl p-6 md:p-8 shadow-2xl flex flex-col max-h-[90vh]">
+            <!-- Header -->
+            <div class="flex justify-between items-center pb-3 border-b border-slate-800">
+                <div class="flex items-center gap-3">
+                    <span id="quiz-object-icon" class="text-3xl">📖</span>
+                    <div>
+                        <h3 id="quiz-object-title" class="font-cinzel text-lg md:text-xl font-bold text-amber-400">Objek Teka-Teki</h3>
+                        <span id="quiz-tag" class="text-xs bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/30 font-mono">SOALAN ARAS SOALAN</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Question Body -->
+            <div class="py-5 overflow-y-auto custom-scrollbar flex-1">
+                <p id="quiz-question-text" class="text-base md:text-lg text-slate-100 font-medium leading-relaxed">
+                    Soalan akan dipaparkan di sini...
+                </p>
+
+                <!-- Options Grid -->
+                <div id="quiz-options-container" class="mt-5 space-y-2.5">
+                    <!-- Dynamic Options -->
+                </div>
+
+                <!-- Feedback Area -->
+                <div id="quiz-feedback" class="hidden mt-5 p-4 rounded-xl border text-sm leading-relaxed">
+                    <!-- Dynamic Feedback -->
+                </div>
+            </div>
+
+            <!-- Footer Action -->
+            <div class="pt-3 border-t border-slate-800 flex justify-end">
+                <button id="quiz-next-btn" onclick="closeQuizModal()" class="hidden px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl shadow transition-colors">
+                    TERUSKAN TEROKA ➔
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Level Completion Transition Modal -->
+    <div id="level-complete-modal" class="hidden absolute inset-0 bg-slate-950/90 backdrop-blur-lg flex items-center justify-center p-4 z-50">
+        <div class="max-w-md w-full bg-slate-900 border-2 border-amber-400 rounded-2xl p-6 shadow-2xl text-center">
+            <div class="text-5xl mb-3 animate-bounce">🔑</div>
+            <h2 id="level-complete-title" class="text-2xl font-cinzel font-bold text-amber-400 mb-1">LEVEL 1 SELESAI!</h2>
+            <p class="text-xs text-slate-300 mb-4">Anda telah mengumpul kesemua kunci untuk level ini.</p>
+
+            <div class="bg-slate-800/90 border border-slate-700 rounded-xl p-4 mb-5 text-left text-sm space-y-2">
+                <div class="flex justify-between border-b border-slate-700 pb-2">
+                    <span class="text-slate-400">Markah Level Ini:</span>
+                    <span id="level-score-display" class="font-bold text-amber-400">60 Markah</span>
+                </div>
+                <div class="flex justify-between pt-1">
+                    <span class="text-slate-400">Jumlah Markah Keseluruhan:</span>
+                    <span id="total-score-display" class="font-bold text-emerald-400">60 Markah</span>
+                </div>
+            </div>
+
+            <button id="btn-next-level" onclick="proceedToNextLevel()" class="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold text-base rounded-xl shadow-lg transition-all">
+                MARA KE LEVEL 2 ➔
+            </button>
+        </div>
+    </div>
+
+    <!-- Final Certificate & Victory Screen Modal -->
+    <div id="victory-modal" class="hidden absolute inset-0 bg-slate-950/95 backdrop-blur-lg flex items-center justify-center p-4 z-50 overflow-y-auto custom-scrollbar">
+        <div class="max-w-2xl w-full my-auto">
+            
+            <!-- Certificate Printable Container -->
+            <div id="printable-certificate" class="bg-slate-900 border-4 border-amber-500/80 rounded-2xl p-6 md:p-8 shadow-2xl text-center relative overflow-hidden">
+                <!-- Decorative Corner Accents -->
+                <div class="absolute top-2 left-2 text-amber-500/30 text-3xl font-cinzel">✦</div>
+                <div class="absolute top-2 right-2 text-amber-500/30 text-3xl font-cinzel">✦</div>
+                <div class="absolute bottom-2 left-2 text-amber-500/30 text-3xl font-cinzel">✦</div>
+                <div class="absolute bottom-2 right-2 text-amber-500/30 text-3xl font-cinzel">✦</div>
+
+                <!-- Header -->
+                <div class="text-4xl mb-2">🎓</div>
+                <h1 class="text-xl md:text-2xl font-cinzel font-bold text-amber-400 tracking-widest uppercase">SIJIL PENGHARGAAN PENCAPAIAN</h1>
+                <p class="text-xs text-slate-300 font-cinzel tracking-wide mb-4">ESCAPE ROOM KMK 3D: BILIK RAHSIA SASTERA</p>
+
+                <p class="text-xs text-slate-400 italic">Dengan ini diperakui bahawa:</p>
+                <h2 id="cert-student-name" class="text-2xl md:text-3xl font-bold font-cinzel text-white my-1 border-b-2 border-amber-500/40 inline-block px-6 py-1">NAMA PELAJAR</h2>
+                
+                <div class="flex justify-center gap-4 text-xs text-amber-300 my-2">
+                    <p>Kelas: <b id="cert-student-class" class="text-white">6 Gemilang</b></p>
+                    <p>•</p>
+                    <p>Sekolah: <b id="cert-student-school" class="text-white">SMK Seri Indah</b></p>
+                </div>
+
+                <p class="text-xs text-slate-300 max-w-lg mx-auto my-3 leading-relaxed">
+                    Telah berjaya merungkaikan kesemua teka-teki 3 Level (Aras Mudah, Sederhana & KBAT) bagi pengajaran <b>Hikayat Hang Tuah Bab II</b> dengan keputusan berikut:
+                </p>
+
+                <!-- Score Breakdown Table -->
+                <div class="bg-slate-800/80 border border-amber-500/30 rounded-xl p-4 my-4 max-w-md mx-auto text-xs space-y-2">
+                    <div class="grid grid-cols-3 text-slate-400 border-b border-slate-700 pb-1.5 font-bold">
+                        <span>Peringkat</span>
+                        <span>Sasaran</span>
+                        <span>Markah</span>
+                    </div>
+                    <div class="grid grid-cols-3 text-slate-200">
+                        <span>Level 1 (Mudah)</span>
+                        <span>3 Soalan</span>
+                        <span id="cert-l1" class="font-bold text-amber-400">0</span>
+                    </div>
+                    <div class="grid grid-cols-3 text-slate-200">
+                        <span>Level 2 (Sederhana)</span>
+                        <span>4 Soalan</span>
+                        <span id="cert-l2" class="font-bold text-amber-400">0</span>
+                    </div>
+                    <div class="grid grid-cols-3 text-slate-200">
+                        <span>Level 3 (KBAT)</span>
+                        <span>5 Soalan</span>
+                        <span id="cert-l3" class="font-bold text-amber-400">0</span>
+                    </div>
+                    <div class="grid grid-cols-3 text-emerald-400 font-bold border-t border-slate-700 pt-2 text-sm">
+                        <span>JUMLAH</span>
+                        <span>12 Soalan</span>
+                        <span id="cert-total">0 / 240</span>
+                    </div>
+                </div>
+
+                <!-- Final Grade & Message -->
+                <div id="cert-grade-badge" class="inline-block px-4 py-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold mb-3">
+                    PENCAPAIAN: SANGAT CEMERLANG
+                </div>
+
+                <p class="text-[10px] text-slate-400 italic">"Nilai murni, keberanian, ketaatan, dan kesungguhan menimba ilmu watak-watak Hikayat Hang Tuah adalah pedoman terbaik untuk kehidupan."</p>
+            </div>
+
+            <!-- Non-printable Actions -->
+            <div class="flex flex-col sm:flex-row gap-3 mt-4 no-print">
+                <button onclick="downloadOrPrintCertificate()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition-colors flex items-center justify-center gap-2">
+                    <span>🖨️</span> CETAK / SIMPAN SIJIL (PDF)
+                </button>
+                <button onclick="restartGame()" class="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/40 font-bold rounded-xl shadow-lg transition-colors flex items-center justify-center gap-2">
+                    <span>🔄</span> MAIN SEMULA
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Game Logic -->
+    <script>
+        /* ==========================================
+           1. THREE-LEVEL QUESTION BANK (KMK BAB II)
+           ========================================== */
+        const LEVEL_DATA = {
+            1: {
+                levelTitle: "LEVEL 1: ARAS MUDAH",
+                badgeText: "LEVEL 1",
+                description: "Kenal pasti pengajaran asas dan peristiwa utama.",
+                questions: [
+                    {
+                        id: 'obj_l1_1',
+                        objectName: 'Buku Kitab Lama',
+                        icon: '📖',
+                        question: 'Hang Mahmud membawa Dang Merdu dan Hang Tuah berpindah dari Sungai Duyung ke Bentan untuk mencari rezeki. Apakah pengajaran utama daripada tindakan ini?',
+                        options: [
+                            { label: 'A', text: 'Kita hendaklah rajin menimba pelbagai jenis ilmu.', correct: false },
+                            { label: 'B', text: 'Kita hendaklah berhijrah untuk mengubah kehidupan ke arah yang lebih baik.', correct: true },
+                            { label: 'C', text: 'Kita hendaklah bersiap sedia untuk menjadi pembesar istana.', correct: false },
+                            { label: 'D', text: 'Kita hendaklah taat kepada perintah ibu bapa sahaja.', correct: false }
+                        ],
+                        explanation: 'Pengajaran yang tepat ialah **Kita hendaklah berhijrah untuk mengubah kehidupan** demi mendapatkan peluang rezeki dan taraf hidup yang lebih terjamin.'
+                    },
+                    {
+                        id: 'obj_l1_2',
+                        objectName: 'Jam Dinding Antik',
+                        icon: '🕰️',
+                        question: 'Hang Tuah rajin mengaji al-Quran dan mendalami 12 bahasa asing. Apakah sifat murni Hang Tuah yang perlu dicontohi?',
+                        options: [
+                            { label: 'A', text: 'Rajin menimba ilmu pengetahuan dan kemahiran.', correct: true },
+                            { label: 'B', text: 'Bersikap sombong dengan kelebihan diri.', correct: false },
+                            { label: 'C', text: 'Mengabaikan ilmu kepahlawanan.', correct: false },
+                            { label: 'D', text: 'Menuntut ilmu hanya apabila diarahkan oleh raja.', correct: false }
+                        ],
+                        explanation: 'Pengajaran utama ialah **Kita hendaklah rajin menimba ilmu** agar menjadi individu berilmu luas dan berpandangan jauh.'
+                    },
+                    {
+                        id: 'obj_l1_3',
+                        objectName: 'Lukisan Istana',
+                        icon: '🖼️',
+                        question: 'Hang Mahmud bermimpi bulan turun dari langit lalu mengadakan kenduri doa selamat kerana bersyukur atas petanda baik. Pengajaran yang terlibat ialah:',
+                        options: [
+                            { label: 'A', text: 'Menanam sifat berani menentang musuh.', correct: false },
+                            { label: 'B', text: 'Menggunakan kebijaksanaan untuk menyelesaikan masalah.', correct: false },
+                            { label: 'C', text: 'Percaya dan yakin kepada Qadak dan Qadar Allah SWT.', correct: true },
+                            { label: 'D', text: 'Mementingkan kedudukan dan jawatan di istana.', correct: false }
+                        ],
+                        explanation: 'Pengajaran yang tepat ialah **Percaya kepada Qadak dan Qadar** dengan sentiasa bersyukur dan reda atas ketentuan Allah SWT.'
+                    }
+                ]
+            },
+            2: {
+                levelTitle: "LEVEL 2: ARAS SEDERHANA",
+                badgeText: "LEVEL 2",
+                description: "Analisis perwatakan dan tanggungjawab watak.",
+                questions: [
+                    {
+                        id: 'obj_l2_1',
+                        objectName: 'Kotak Rahsia',
+                        icon: '📦',
+                        question: 'Mengapakah Raja Bentan murka kepada pengiring Bendahara semasa insiden orang mengamuk berdekatan kedai Hang Tuah?',
+                        options: [
+                            { label: 'A', text: 'Kerana pengiring mengabaikan tanggungjawab menjaga keselamatan pembesar dan melarikan diri.', correct: true },
+                            { label: 'B', text: 'Kerana pengiring tidak membawa senjata yang cukup.', correct: false },
+                            { label: 'C', text: 'Kerana mereka tidak membantu Hang Mahmud menjual makanan.', correct: false },
+                            { label: 'D', text: 'Kerana mereka gagal menangkap lanun di perairan Bentan.', correct: false }
+                        ],
+                        explanation: 'Pembesar dan pengiring **hendaklah melaksanakan tanggungjawab** menjaga keselamatan dan ketenteraman negeri secara amanah.'
+                    },
+                    {
+                        id: 'obj_l2_2',
+                        objectName: 'Kunci Emas Besar',
+                        icon: '🔑',
+                        question: 'Apakah pengajaran daripada tindakan Hang Tuah yang sedia bersujud, menerima jawatan biduanda, dan sanggup berkhidmat ke Palembang demi Raja Bentan?',
+                        options: [
+                            { label: 'A', text: 'Kita hendaklah sentiasa mencari pengaruh politik.', correct: false },
+                            { label: 'B', text: 'Kita hendaklah taat dan setia kepada raja serta negara.', correct: true },
+                            { label: 'C', text: 'Kita hendaklah berundur sekiranya tugas tersebut berbahaya.', correct: false },
+                            { label: 'D', text: 'Kita hendaklah menuntut ganjaran sebelum menjalankan tugas.', correct: false }
+                        ],
+                        explanation: 'Pengajaran murni ini ialah **Kita hendaklah taat kepada raja dan negara** bagi mengekalkan kestabilan dan kedaulatan tanah air.'
+                    },
+                    {
+                        id: 'obj_l2_3',
+                        objectName: 'Peti Harta Purba',
+                        icon: '🧰',
+                        question: 'Semasa berusia sepuluh tahun, Hang Tuah dan empat sahabatnya berani berhadapan dengan lanun di Pulau Tinggi. Apakah pengajaran daripada peristiwa ini?',
+                        options: [
+                            { label: 'A', text: 'Hendaklah menanamkan sifat keberanian dalam diri demi keselamatan.', correct: true },
+                            { label: 'B', text: 'Hendaklah mengelakkan diri daripada pertempuran.', correct: false },
+                            { label: 'C', text: 'Hendaklah bergantung sepenuhnya kepada bantuan pihak lain.', correct: false },
+                            { label: 'D', text: 'Hendaklah mengambil harta lanun untuk kepentingan sendiri.', correct: false }
+                        ],
+                        explanation: 'Pengajaran yang tepat ialah **Menanamkan sifat keberanian** untuk berhadapan dengan ancaman musuh.'
+                    },
+                    {
+                        id: 'obj_l2_4',
+                        objectName: 'Pedang Syiling',
+                        icon: '🗡️',
+                        question: 'Bendahara Paduka Raja mendengar persembahan tentang ancaman musuh Siantan dan menyusun cadangan kawalan perairan. Peristiwa ini mencerminkan pengajaran:',
+                        options: [
+                            { label: 'A', text: 'Pembesar hendaklah rajin menimba ilmu bahasa asing.', correct: false },
+                            { label: 'B', text: 'Pembesar hendaklah melaksanakan tanggungjawab memelihara keselamatan rakyat dan negeri.', correct: true },
+                            { label: 'C', text: 'Rakyat hendaklah berhijrah jika ancaman musuh berlaku.', correct: false },
+                            { label: 'D', text: 'Pembesar hendaklah melepaskan jawatan jika ancaman meningkat.', correct: false }
+                        ],
+                        explanation: 'Pengajaran ini menegaskan **Pelaksanaan tanggungjawab oleh pembesar** untuk melindungi ketenteraman rakyat.'
+                    }
+                ]
+            },
+            3: {
+                levelTitle: "LEVEL 3: ARAS TINGGI (KBAT)",
+                badgeText: "LEVEL 3",
+                description: "Penilaian ikhtibar sastera dan perancangan strategik.",
+                questions: [
+                    {
+                        id: 'obj_l3_1',
+                        objectName: 'Manuskrip Kuno',
+                        icon: '📜',
+                        question: 'Hang Tuah menggunakan akal yang tenang dan strategi tepat ketika berhadapan lanun di Pulau Tinggi dan orang mengamuk. Apakah pengajaran KBAT yang ditunjukkan?',
+                        options: [
+                            { label: 'A', text: 'Kita hendaklah bertindak melulu untuk menunjuk kekuatan.', correct: false },
+                            { label: 'B', text: 'Kita hendaklah menggunakan kebijaksanaan untuk menyelesaikan sesuatu masalah.', correct: true },
+                            { label: 'C', text: 'Kita hendaklah menyerahkan masalah kepada pembesar negeri semata-mata.', correct: false },
+                            { label: 'D', text: 'Kita hendaklah melarikan diri daripada situasi sulit.', correct: false }
+                        ],
+                        explanation: 'Pengajaran KBAT ialah **Menggunakan kebijaksanaan** untuk menilai situasi dan merancang tindakan yang paling berkesan.'
+                    },
+                    {
+                        id: 'obj_l3_2',
+                        objectName: 'Mahkota Emas',
+                        icon: '👑',
+                        question: 'Apakah ikhtibar utama kepada generasi muda hari ini daripada ketaatan Hang Tuah kepada pemerintah dan negerinya?',
+                        options: [
+                            { label: 'A', text: 'Mempertahankan kedaulatan negara dan mematuhi undang-undang demi perpaduan.', correct: true },
+                            { label: 'B', text: 'Menurut semua perintah tanpa membuat pertimbangan akal rasional.', correct: false },
+                            { label: 'C', text: 'Mengutamakan kepentingan peribadi berbanding kepentingan negara.', correct: false },
+                            { label: 'D', text: 'Meninggalkan tanah air apabila berhadapan cabaran ekonomi.', correct: false }
+                        ],
+                        explanation: 'Ikhtibar generasi muda ialah **Mempertahankan kedaulatan dan kestabilan negara** melalui nilai kesetiaan yang terpuji.'
+                    },
+                    {
+                        id: 'obj_l3_3',
+                        objectName: 'Kompas Pelayaran',
+                        icon: '🧭',
+                        question: 'Mengapakah penguasaan 12 bahasa asing oleh Hang Tuah memberikan kelebihan besar kepada pentadbiran negeri Bentan?',
+                        options: [
+                            { label: 'A', text: 'Memudahkan Hang Tuah mengumpul harta kekayaan peribadi.', correct: false },
+                            { label: 'B', text: 'Membolehkan komunikasi diplomasi dan hubungan perdagangan dengan kuasa luar berjalan lancar.', correct: true },
+                            { label: 'C', text: 'Menjadikan Hang Tuah pahlawan yang tidak boleh dikalahkan.', correct: false },
+                            { label: 'D', text: 'Mengelakkan Hang Tuah daripada perlu bertarung dengan musuh.', correct: false }
+                        ],
+                        explanation: 'Ilmu pelbagai bahasa membolehkan **kecekapan hubungan diplomasi & perdagangan** demi kemakmuran sesebuah negara.'
+                    },
+                    {
+                        id: 'obj_l3_4',
+                        objectName: 'Perisai Perak',
+                        icon: '🛡️',
+                        question: 'Apakah kesan negatif kepada sesebuah negara jika golongan pembesar mengabaikan amanah keselamatan rakyat?',
+                        options: [
+                            { label: 'A', text: 'Negara menjadi semakin kukuh dan disegani oleh musuh.', correct: false },
+                            { label: 'B', text: 'Kedaulatan terancam, krisis kepimpinan berlaku, dan rakyat berada dalam ketakutan.', correct: true },
+                            { label: 'C', text: 'Rakyat akan secara automatik menjadi lebih berani.', correct: false },
+                            { label: 'D', text: 'Ekonomi negara akan berkembang lebih cepat.', correct: false }
+                        ],
+                        explanation: 'Pengabaian tanggungjawab oleh pemimpin/pembesar membawa kepada **krisis keselamatan dan kemerosotan kedaulatan**.'
+                    },
+                    {
+                        id: 'obj_l3_5',
+                        objectName: 'Peta Dunya Melayu',
+                        icon: '🗺️',
+                        question: 'Secara keseluruhan, bagaimanakah gabungan ilmu pengetahuan, keberanian, dan ketaatan Hang Tuah membentuk sahsiah pahlawan Melayu sejati?',
+                        options: [
+                            { label: 'A', text: 'Melahirkan modal insan seimbang yang mempertahankan agama, raja, dan tanah air.', correct: true },
+                            { label: 'B', text: 'Menjadikan pahlawan digeruni kerana kejam kepada musuh.', correct: false },
+                            { label: 'C', text: 'Membolehkan seseorang hidup selesa tanpa perlu bekerja.', correct: false },
+                            { label: 'D', text: 'Memastikan semua keputusan dibuat secara bersendirian.', correct: false }
+                        ],
+                        explanation: 'Gabungan nilai murni melahirkan **modal insan yang seimbang, berakhlak mulia, dan berbakti kepada bangsa dan negara**.'
+                    }
+                ]
+            }
+        };
+
+        /* ==========================================
+           2. GAME STATE MANAGEMENT
+           ========================================== */
+        let studentProfile = {
+            name: "",
+            class: "",
+            school: ""
+        };
+
+        let gameState = {
+            started: false,
+            currentLevel: 1,
+            scores: { 1: 0, 2: 0, 3: 0 },
+            completedCount: 0,
+            answeredObjects: new Set(),
+            currentActiveObject: null,
+            canExitLevel: false
+        };
+
+        /* ==========================================
+           3. THREE.JS 3D SCENE SETUP
+           ========================================== */
+        let scene, camera, renderer;
+        let playerMesh;
+        let doorMesh, doorGlowLight;
+        let interactiveObjects = [];
+        const keysPressed = {};
+        const touchState = { up: false, down: false, left: false, right: false };
+
+        function init3D() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a);
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.04);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffeedd, 0.6);
+            scene.add(ambientLight);
+
+            const mainChandelier = new THREE.PointLight(0xfbbf24, 1.2, 25);
+            mainChandelier.position.set(0, 7, 0);
+            mainChandelier.castShadow = true;
+            scene.add(mainChandelier);
+
+            buildLibraryRoom();
+            createPlayer();
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', (e) => {
+                keysPressed[e.key.toLowerCase()] = true;
+                if (e.key.toLowerCase() === 'e' && gameState.currentActiveObject) {
+                    triggerObjectInteraction();
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                keysPressed[e.key.toLowerCase()] = false;
+            });
+
+            setupMobileControls();
+            animate();
+        }
+
+        function buildLibraryRoom() {
+            const floorGeo = new THREE.PlaneGeometry(20, 20);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x291d0e, roughness: 0.6 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x1e1b18, roughness: 0.8 });
+            
+            const wallBack = new THREE.Mesh(new THREE.PlaneGeometry(20, 8), wallMat);
+            wallBack.position.set(0, 4, -10);
+            scene.add(wallBack);
+
+            const wallFront = new THREE.Mesh(new THREE.PlaneGeometry(20, 8), wallMat);
+            wallFront.position.set(0, 4, 10);
+            wallFront.rotation.y = Math.PI;
+            scene.add(wallFront);
+
+            const wallLeft = new THREE.Mesh(new THREE.PlaneGeometry(20, 8), wallMat);
+            wallLeft.position.set(-10, 4, 0);
+            wallLeft.rotation.y = Math.PI / 2;
+            scene.add(wallLeft);
+
+            const wallRight = new THREE.Mesh(new THREE.PlaneGeometry(20, 8), wallMat);
+            wallRight.position.set(10, 4, 0);
+            wallRight.rotation.y = -Math.PI / 2;
+            scene.add(wallRight);
+
+            createExitDoor();
+        }
+
+        function createExitDoor() {
+            const doorGroup = new THREE.Group();
+            
+            const frameGeo = new THREE.BoxGeometry(3.2, 5.2, 0.4);
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+            const frame = new THREE.Mesh(frameGeo, frameMat);
+            frame.position.y = 2.6;
+            doorGroup.add(frame);
+
+            const doorGeo = new THREE.BoxGeometry(2.8, 4.8, 0.2);
+            const doorMat = new THREE.MeshStandardMaterial({ color: 0x78350f, metalness: 0.2, roughness: 0.5 });
+            doorMesh = new THREE.Mesh(doorGeo, doorMat);
+            doorMesh.position.set(0, 2.4, 0.1);
+            doorMesh.castShadow = true;
+            doorGroup.add(doorMesh);
+
+            doorGlowLight = new THREE.PointLight(0x10b981, 0, 10);
+            doorGlowLight.position.set(0, 3, 0.5);
+            doorGroup.add(doorGlowLight);
+
+            doorGroup.position.set(0, 0, -9.7);
+            scene.add(doorGroup);
+        }
+
+        function createPlayer() {
+            const playerGroup = new THREE.Group();
+
+            const bodyGeo = new THREE.CylinderGeometry(0.4, 0.3, 1.4, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2563eb });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1.1;
+            body.castShadow = true;
+            playerGroup.add(body);
+
+            const headGeo = new THREE.SphereGeometry(0.35, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xfde047 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 2.0;
+            head.castShadow = true;
+            playerGroup.add(head);
+
+            const hatGeo = new THREE.ConeGeometry(0.38, 0.4, 16);
+            const hatMat = new THREE.MeshStandardMaterial({ color: 0xb45309 });
+            const hat = new THREE.Mesh(hatGeo, hatMat);
+            hat.position.y = 2.35;
+            playerGroup.add(hat);
+
+            playerGroup.position.set(0, 0, 6);
+            scene.add(playerGroup);
+            playerMesh = playerGroup;
+        }
+
+        /* Spawns interactive 3D objects depending on Level */
+        function loadLevelObjects(levelNum) {
+            // Remove existing 3D objects
+            interactiveObjects.forEach(obj => scene.remove(obj.mesh));
+            interactiveObjects = [];
+
+            const currentQuestions = LEVEL_DATA[levelNum].questions;
+            
+            // Standard Preset Object Coordinates in Room
+            const positions = [
+                new THREE.Vector3(-4, 1.2, -3),
+                new THREE.Vector3(4, 1.2, -3),
+                new THREE.Vector3(-7, 1.5, 2),
+                new THREE.Vector3(7, 1.5, 2),
+                new THREE.Vector3(0, 1.5, 3)
+            ];
+
+            const colors = [0xd97706, 0x10b981, 0x3b82f6, 0xec4899, 0x8b5cf6];
+
+            currentQuestions.forEach((q, idx) => {
+                const group = new THREE.Group();
+                const pos = positions[idx];
+
+                // Stand Pedestal
+                const pedGeo = new THREE.CylinderGeometry(0.5, 0.6, 1.2, 16);
+                const pedMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+                const ped = new THREE.Mesh(pedGeo, pedMat);
+                ped.position.y = 0.6;
+                group.add(ped);
+
+                // Floating Object Indicator Shape
+                const orbGeo = new THREE.OctahedronGeometry(0.4, 0);
+                const orbMat = new THREE.MeshStandardMaterial({ 
+                    color: colors[idx % colors.length], 
+                    metalness: 0.8, 
+                    roughness: 0.2 
+                });
+                const orb = new THREE.Mesh(orbGeo, orbMat);
+                orb.position.y = 1.8;
+                group.add(orb);
+
+                // Glow point
+                const pLight = new THREE.PointLight(colors[idx % colors.length], 0.8, 4);
+                pLight.position.y = 1.8;
+                group.add(pLight);
+
+                group.position.copy(pos);
+                scene.add(group);
+
+                interactiveObjects.push({
+                    id: q.id,
+                    mesh: group,
+                    orbMesh: orb,
+                    pos: pos,
+                    data: q
+                });
+            });
+        }
+
+        /* ==========================================
+           4. CONTROLS & ANIMATION LOOP
+           ========================================== */
+        function setupMobileControls() {
+            const bindBtn = (id, keyState) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); touchState[keyState] = true; });
+                btn.addEventListener('touchend', (e) => { e.preventDefault(); touchState[keyState] = false; });
+                btn.addEventListener('mousedown', () => { touchState[keyState] = true; });
+                btn.addEventListener('mouseup', () => { touchState[keyState] = false; });
+            };
+
+            bindBtn('btn-up', 'up');
+            bindBtn('btn-down', 'down');
+            bindBtn('btn-left', 'left');
+            bindBtn('btn-right', 'right');
+
+            const actionBtn = document.getElementById('btn-action');
+            if (actionBtn) {
+                actionBtn.addEventListener('click', () => {
+                    if (gameState.currentActiveObject) triggerObjectInteraction();
+                });
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gameState.started) {
+                handlePlayerMovement();
+                checkProximity();
+                updateCamera();
+                rotateInteractiveObjects();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function handlePlayerMovement() {
+            const moveSpeed = 0.12;
+            let moveX = 0;
+            let moveZ = 0;
+
+            if (keysPressed['w'] || keysPressed['arrowup'] || touchState.up) moveZ -= 1;
+            if (keysPressed['s'] || keysPressed['arrowdown'] || touchState.down) moveZ += 1;
+            if (keysPressed['a'] || keysPressed['arrowleft'] || touchState.left) moveX -= 1;
+            if (keysPressed['d'] || keysPressed['arrowright'] || touchState.right) moveX += 1;
+
+            if (moveX !== 0 || moveZ !== 0) {
+                const moveVec = new THREE.Vector3(moveX, 0, moveZ).normalize().multiplyScalar(moveSpeed);
+                const nextX = playerMesh.position.x + moveVec.x;
+                const nextZ = playerMesh.position.z + moveVec.z;
+
+                if (Math.abs(nextX) < 8.8) playerMesh.position.x = nextX;
+                if (Math.abs(nextZ) < 8.8) playerMesh.position.z = nextZ;
+
+                const angle = Math.atan2(moveVec.x, moveVec.z);
+                playerMesh.rotation.y = angle;
+            }
+        }
+
+        function updateCamera() {
+            const targetCamPos = new THREE.Vector3(
+                playerMesh.position.x,
+                playerMesh.position.y + 6,
+                playerMesh.position.z + 8
+            );
+            camera.position.lerp(targetCamPos, 0.08);
+            camera.lookAt(playerMesh.position.x, playerMesh.position.y + 1, playerMesh.position.z);
+        }
+
+        function rotateInteractiveObjects() {
+            interactiveObjects.forEach(obj => {
+                if (!gameState.answeredObjects.has(obj.id)) {
+                    obj.orbMesh.rotation.y += 0.02;
+                    obj.orbMesh.rotation.x += 0.01;
+                }
+            });
+
+            if (gameState.canExitLevel && doorGlowLight) {
+                doorGlowLight.intensity = 2 + Math.sin(Date.now() * 0.006) * 1;
+            }
+        }
+
+        function checkProximity() {
+            let foundNearObj = null;
+
+            interactiveObjects.forEach(obj => {
+                const dist = playerMesh.position.distanceTo(obj.pos);
+                if (dist < 2.3 && !gameState.answeredObjects.has(obj.id)) {
+                    foundNearObj = obj;
+                }
+            });
+
+            const doorPos = new THREE.Vector3(0, 0, -8.5);
+            const distToDoor = playerMesh.position.distanceTo(doorPos);
+
+            const promptEl = document.getElementById('interact-prompt');
+            const promptLabel = document.getElementById('prompt-label');
+
+            if (foundNearObj) {
+                gameState.currentActiveObject = foundNearObj;
+                promptLabel.innerText = `SIASAT ${foundNearObj.data.objectName.toUpperCase()}`;
+                promptEl.classList.remove('hidden');
+            } else if (distToDoor < 2.5 && gameState.canExitLevel) {
+                gameState.currentActiveObject = { id: 'exit_door' };
+                promptLabel.innerText = 'TEKAN E UNTUK MARA/KELUAR!';
+                promptEl.classList.remove('hidden');
+            } else if (distToDoor < 2.5 && !gameState.canExitLevel) {
+                gameState.currentActiveObject = null;
+                promptLabel.innerText = 'PINTU TERKUNCI! SIASAT SEMUA OBJEK LEVEL INI.';
+                promptEl.classList.remove('hidden');
+            } else {
+                gameState.currentActiveObject = null;
+                promptEl.classList.add('hidden');
+            }
+        }
+
+        /* ==========================================
+           5. GAME & LEVEL PROGRESSION LOGIC
+           ========================================== */
+        function startGame() {
+            const name = document.getElementById('input-student-name').value.trim();
+            const sClass = document.getElementById('input-student-class').value.trim();
+            const school = document.getElementById('input-student-school').value.trim();
+
+            if (!name || !sClass || !school) {
+                alert("Sila isi ruangan Nama, Kelas, dan Sekolah terlebih dahulu!");
+                return;
+            }
+
+            studentProfile = { name, class: sClass, school };
+            document.getElementById('hud-student-name').innerText = name;
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+            
+            gameState.started = true;
+            initLevel(1);
+        }
+
+        function initLevel(levelNum) {
+            gameState.currentLevel = levelNum;
+            gameState.completedCount = 0;
+            gameState.answeredObjects.clear();
+            gameState.canExitLevel = false;
+
+            const lvlData = LEVEL_DATA[levelNum];
+
+            // Reset Player Position
+            playerMesh.position.set(0, 0, 6);
+            playerMesh.rotation.y = 0;
+
+            // HUD updates
+            document.getElementById('hud-level-badge').innerText = lvlData.badgeText;
+            document.getElementById('hud-level-title').innerText = lvlData.levelTitle;
+
+            // Build dynamic keys UI
+            const keysContainer = document.getElementById('keys-container');
+            keysContainer.innerHTML = '';
+            for (let i = 0; i < lvlData.questions.length; i++) {
+                const k = document.createElement('div');
+                k.className = "key-icon w-6 h-6 rounded-full border border-slate-600 bg-slate-800 flex items-center justify-center text-xs text-slate-500";
+                k.innerText = "🔑";
+                keysContainer.appendChild(k);
+            }
+
+            if (doorGlowLight) doorGlowLight.intensity = 0;
+
+            // Load 3D Objects for current level
+            loadLevelObjects(levelNum);
+            updateHUDScoreDisplay();
+        }
+
+        function triggerObjectInteraction() {
+            if (!gameState.currentActiveObject) return;
+
+            if (gameState.currentActiveObject.id === 'exit_door') {
+                if (gameState.canExitLevel) {
+                    handleLevelCompletion();
+                }
+                return;
+            }
+
+            openQuizModal(gameState.currentActiveObject.data);
+        }
+
+        function openQuizModal(questionData) {
+            const modal = document.getElementById('quiz-modal');
+            document.getElementById('quiz-object-icon').innerText = questionData.icon;
+            document.getElementById('quiz-object-title').innerText = questionData.objectName;
+            document.getElementById('quiz-tag').innerText = `LEVEL ${gameState.currentLevel} SOALAN`;
+            document.getElementById('quiz-question-text').innerText = questionData.question;
+
+            const optionsContainer = document.getElementById('quiz-options-container');
+            optionsContainer.innerHTML = '';
+
+            const feedbackEl = document.getElementById('quiz-feedback');
+            feedbackEl.classList.add('hidden');
+
+            const nextBtn = document.getElementById('quiz-next-btn');
+            nextBtn.classList.add('hidden');
+
+            questionData.options.forEach((opt) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full text-left p-3.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700/80 transition-all flex items-start gap-3 group text-slate-200";
+                btn.innerHTML = `
+                    <span class="bg-slate-700 group-hover:bg-amber-500 group-hover:text-slate-950 text-amber-400 font-bold w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-sm transition-colors">${opt.label}</span>
+                    <span class="text-xs md:text-sm pt-0.5">${opt.text}</span>
+                `;
+                btn.onclick = () => handleAnswerSubmission(questionData, opt, btn);
+                optionsContainer.appendChild(btn);
+            });
+
+            modal.classList.remove('hidden');
+        }
+
+        function handleAnswerSubmission(questionData, selectedOption, selectedBtn) {
+            const optionsContainer = document.getElementById('quiz-options-container');
+            const allBtns = optionsContainer.querySelectorAll('button');
+            allBtns.forEach(btn => btn.onclick = null);
+
+            const feedbackEl = document.getElementById('quiz-feedback');
+            const nextBtn = document.getElementById('quiz-next-btn');
+            const isCorrect = selectedOption.correct;
+
+            if (isCorrect) {
+                selectedBtn.classList.remove('bg-slate-800', 'border-slate-700');
+                selectedBtn.classList.add('bg-emerald-950/80', 'border-emerald-500', 'text-emerald-200');
+
+                feedbackEl.className = "mt-4 p-3.5 rounded-xl border bg-emerald-950/60 border-emerald-500/50 text-emerald-300 text-xs leading-relaxed";
+                feedbackEl.innerHTML = `<b>TAHNIAH! JAWAPAN BETUL (+20 Markah)</b><br>${questionData.explanation}`;
+                
+                gameState.scores[gameState.currentLevel] += 20;
+            } else {
+                selectedBtn.classList.remove('bg-slate-800', 'border-slate-700');
+                selectedBtn.classList.add('bg-rose-950/80', 'border-rose-500', 'text-rose-200');
+
+                allBtns.forEach((btn, idx) => {
+                    if (questionData.options[idx].correct) {
+                        btn.classList.remove('bg-slate-800');
+                        btn.classList.add('bg-emerald-950/60', 'border-emerald-500/80');
+                    }
+                });
+
+                feedbackEl.className = "mt-4 p-3.5 rounded-xl border bg-rose-950/60 border-rose-500/50 text-rose-300 text-xs leading-relaxed";
+                feedbackEl.innerHTML = `<b>JAWAPAN KURANG TEPAT (0 Markah)</b><br>${questionData.explanation}`;
+            }
+
+            gameState.answeredObjects.add(questionData.id);
+            gameState.completedCount += 1;
+
+            updateHUDScoreDisplay();
+
+            feedbackEl.classList.remove('hidden');
+            nextBtn.classList.remove('hidden');
+        }
+
+        function updateHUDScoreDisplay() {
+            const totalScore = gameState.scores[1] + gameState.scores[2] + gameState.scores[3];
+            document.getElementById('score-text').innerText = `${totalScore} Markah`;
+
+            document.getElementById('score-l1').innerText = gameState.scores[1];
+            document.getElementById('score-l2').innerText = gameState.scores[2];
+            document.getElementById('score-l3').innerText = gameState.scores[3];
+
+            // Update key icons
+            const keyIcons = document.querySelectorAll('#keys-container .key-icon');
+            for (let i = 0; i < gameState.completedCount; i++) {
+                if (keyIcons[i]) {
+                    keyIcons[i].classList.remove('bg-slate-800', 'text-slate-500', 'border-slate-600');
+                    keyIcons[i].classList.add('bg-amber-500', 'text-slate-950', 'border-amber-300', 'shadow-md');
+                }
+            }
+
+            const targetQuestionCount = LEVEL_DATA[gameState.currentLevel].questions.length;
+            if (gameState.completedCount >= targetQuestionCount) {
+                gameState.canExitLevel = true;
+                if (doorGlowLight) doorGlowLight.color.setHex(0x10b981);
+            }
+        }
+
+        function closeQuizModal() {
+            document.getElementById('quiz-modal').classList.add('hidden');
+        }
+
+        function handleLevelCompletion() {
+            if (gameState.currentLevel < 3) {
+                // Show Level Complete Transition
+                document.getElementById('level-complete-title').innerText = `LEVEL ${gameState.currentLevel} SELESAI!`;
+                document.getElementById('level-score-display').innerText = `${gameState.scores[gameState.currentLevel]} Markah`;
+                
+                const currentTotal = gameState.scores[1] + gameState.scores[2] + gameState.scores[3];
+                document.getElementById('total-score-display').innerText = `${currentTotal} Markah`;
+                
+                document.getElementById('btn-next-level').innerText = `MARA KE LEVEL ${gameState.currentLevel + 1} ➔`;
+                document.getElementById('level-complete-modal').classList.remove('hidden');
+            } else {
+                // Game Finished - Show Certificate
+                showFinalCertificate();
+            }
+        }
+
+        function proceedToNextLevel() {
+            document.getElementById('level-complete-modal').classList.add('hidden');
+            initLevel(gameState.currentLevel + 1);
+        }
+
+        function showFinalCertificate() {
+            gameState.started = false;
+            document.getElementById('game-hud').classList.add('hidden');
+
+            const totalScore = gameState.scores[1] + gameState.scores[2] + gameState.scores[3];
+
+            document.getElementById('cert-student-name').innerText = studentProfile.name.toUpperCase();
+            document.getElementById('cert-student-class').innerText = studentProfile.class;
+            document.getElementById('cert-student-school').innerText = studentProfile.school;
+
+            document.getElementById('cert-l1').innerText = `${gameState.scores[1]} / 60`;
+            document.getElementById('cert-l2').innerText = `${gameState.scores[2]} / 80`;
+            document.getElementById('cert-l3').innerText = `${gameState.scores[3]} / 100`;
+            document.getElementById('cert-total').innerText = `${totalScore} / 240`;
+
+            const gradeBadge = document.getElementById('cert-grade-badge');
+            if (totalScore >= 200) {
+                gradeBadge.innerText = "PENCAPAIAN: SANGAT CEMERLANG (GRED A)";
+                gradeBadge.className = "inline-block px-4 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold mb-3";
+            } else if (totalScore >= 140) {
+                gradeBadge.innerText = "PENCAPAIAN: KEFAHAMAN BAIK (GRED B)";
+                gradeBadge.className = "inline-block px-4 py-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-bold mb-3";
+            } else {
+                gradeBadge.innerText = "PENCAPAIAN: MEMUASKAN (GRED C)";
+                gradeBadge.className = "inline-block px-4 py-1.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-xs font-bold mb-3";
+            }
+
+            document.getElementById('victory-modal').classList.remove('hidden');
+        }
+
+        /* Improved Print / Download Function */
+        function downloadOrPrintCertificate() {
+            const certElement = document.getElementById('printable-certificate');
+            
+            // Try html2pdf first to download direct PDF file
+            if (typeof html2pdf !== 'undefined') {
+                const opt = {
+                    margin:       0.3,
+                    filename:     `Sijil_KMK_${studentProfile.name.replace(/\s+/g, '_')}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, logging: false },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
+                };
+
+                html2pdf().set(opt).from(certElement).save().catch(err => {
+                    console.warn('html2pdf failed, falling back to window.print()', err);
+                    triggerWindowPrint(certElement);
+                });
+            } else {
+                triggerWindowPrint(certElement);
+            }
+        }
+
+        function triggerWindowPrint(certElement) {
+            try {
+                window.print();
+            } catch(e) {
+                // Fallback for strict iframe popup windows
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                    printWindow.document.write(`
+                        <html>
+                            <head>
+                                <title>Sijil Escape Room KMK</title>
+                                <script src="https://cdn.tailwindcss.com"><\/script>
+                                <style>
+                                    body { font-family: sans-serif; background: white; color: black; padding: 20px; }
+                                </style>
+                            </head>
+                            <body>
+                                ${certElement.outerHTML}
+                                <script>
+                                    setTimeout(() => { window.print(); window.close(); }, 800);
+                                <\/script>
+                            </body>
+                        </html>
+                    `);
+                    printWindow.document.close();
+                } else {
+                    alert('Sila benarkan tetingkap pop-up (Pop-up permissions) pada pelayar anda untuk mencetak sijil.');
+                }
+            }
+        }
+
+        function restartGame() {
+            gameState.scores = { 1: 0, 2: 0, 3: 0 };
+            document.getElementById('victory-modal').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.onload = function() {
+            init3D();
+        };
+    </script>
+</body>
+</html>
